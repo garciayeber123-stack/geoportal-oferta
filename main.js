@@ -1,3 +1,25 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  query,
+  where
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAjjmyThZtS8NgTMF5Ui73VNde00L5-Gw4",
+  authDomain: "autenticacion-oferta.firebaseapp.com",
+  projectId: "autenticacion-oferta",
+  storageBucket: "autenticacion-oferta.firebasestorage.app",
+  messagingSenderId: "1084621981667",
+  appId: "1:1084621981667:web:ac6cfbb0b7dd36939342d6",
+  measurementId: "G-8X9CP3P23Q"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 const map = L.map('map', { zoomControl: false }).setView([4.142, -73.626], 12);
 
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -32,6 +54,8 @@ const ofertaLayer = L.layerGroup().addTo(map);
 let planesParcialesLayer = null;
 let zonaGeoecoUrbanaLayer = null;
 let zonaGeoecoRuralLayer = null;
+let consultaMarker = null;
+let consultaLayer = null;
 
 const uploadedLayersList = document.getElementById('uploadedLayersList');
 const legendPanel = document.getElementById('legendPanel');
@@ -49,9 +73,7 @@ cerrarLegendBtn.addEventListener('click', () => {
 
 baseMapSelect.addEventListener('change', (e) => {
   Object.values(baseMaps).forEach((layer) => {
-    if (map.hasLayer(layer)) {
-      map.removeLayer(layer);
-    }
+    if (map.hasLayer(layer)) map.removeLayer(layer);
   });
   baseMaps[e.target.value].addTo(map);
 });
@@ -89,15 +111,6 @@ document.getElementById('ubicacionBtn').addEventListener('click', () => {
   );
 });
 
-proj4.defs(
-  "EPSG:9377",
-  "+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs"
-);
-
-let consultaMarker = null;
-
-let consultaLayer = null;
-
 function limpiarConsultaGrafica() {
   if (consultaMarker) {
     map.removeLayer(consultaMarker);
@@ -127,9 +140,7 @@ function resaltarGeoJSONFiltrado(layerOriginal, filtro, estilo, popupTitulo) {
   layerOriginal.eachLayer((layer) => {
     if (layer.feature && layer.feature.properties) {
       const props = layer.feature.properties;
-      if (filtro(props)) {
-        coincidencias.push(layer.feature);
-      }
+      if (filtro(props)) coincidencias.push(layer.feature);
     }
   });
 
@@ -151,9 +162,7 @@ function resaltarGeoJSONFiltrado(layerOriginal, filtro, estilo, popupTitulo) {
   ).addTo(map);
 
   const bounds = consultaLayer.getBounds();
-  if (bounds.isValid()) {
-    map.fitBounds(bounds);
-  }
+  if (bounds.isValid()) map.fitBounds(bounds);
 
   return true;
 }
@@ -282,322 +291,7 @@ function buscarPorPredial30(codigoPredial) {
 
   return encontrado;
 }
-document.getElementById('limpiarBtn').addEventListener('click', () => {
-  document.getElementById('direccionInput').value = '';
-  document.getElementById('predialInput').value = '';
-  document.getElementById('norteInput').value = '';
-  document.getElementById('esteInput').value = '';
 
-  if (consultaMarker) {
-    map.removeLayer(consultaMarker);
-    consultaMarker = null;
-  }
-});
-
-fetch('oferta.json')
-  .then((response) => response.json())
-  .then((data) => {
-    ofertaLayer.clearLayers();
-
-    data.forEach((inmueble) => {
-      const popup = `
-        <b>${inmueble.title}</b><br>
-        Tipo: ${inmueble.property_type}<br>
-        Municipio: ${inmueble.municipality}<br>
-        Sector: ${inmueble.sector}<br>
-        Precio: $${Number(inmueble.price).toLocaleString()}<br>
-        Área: ${inmueble.area} m²<br>
-        Teléfono: ${inmueble.contact_phone}<br>
-        Descripción: ${inmueble.description}
-      `;
-
-      L.marker([inmueble.latitude, inmueble.longitude])
-        .bindPopup(popup)
-        .addTo(ofertaLayer);
-    });
-  })
-  .catch((error) => {
-    console.error('Error cargando oferta.json:', error);
-  });
-
-function cargarPlanesParciales() {
-  fetch('data/geojson/planes_parciales.geojson.geojson')
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar planes_parciales.geojson.geojson: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((data) => {
-      if (planesParcialesLayer) {
-        map.removeLayer(planesParcialesLayer);
-      }
-
-      planesParcialesLayer = L.geoJSON(data, {
-        style: {
-          color: '#f97316',
-          weight: 2,
-          fillOpacity: 0.2
-        },
-        onEachFeature: function (feature, layer) {
-          const props = feature.properties || {};
-          const nombre = props.NOMBRE_PP || 'Plan parcial sin nombre';
-
-          let content = `<b>Plan parcial</b><br>Nombre: ${nombre}<br>`;
-
-          Object.keys(props).forEach((key) => {
-            if (key !== 'NOMBRE_PP') {
-              content += `${key}: ${props[key]}<br>`;
-            }
-          });
-
-          layer.bindPopup(content);
-        }
-      });
-    })
-    .catch((error) => {
-      console.error('Error cargando planes_parciales.geojson:', error);
-      alert('No fue posible cargar la capa de planes parciales.');
-    });
-}
-
-function construirPopupZonaGeoeco(props, tipoZona) {
-  const codigoZona =
-    props.CODIGO_ZONA_GEOECONOMICA ||
-    props.codigo_zona_geoeconomica ||
-    props.CODIGO_ZONA ||
-    props.codigo_zona ||
-    'Sin dato';
-
-  const valorHectarea =
-    props.VALOR_HECTAREA ||
-    props.valor_hectarea ||
-    'Sin dato';
-
-  const subzonaFisica =
-    props.SUBZONA_FISICA ||
-    props.subzona_fisica ||
-    'Sin dato';
-
-  const codigoMunicipio =
-    props.CODIGO_MUNICIPIO ||
-    props.codigo_municipio ||
-    'Sin dato';
-
-  const codigo =
-    props.CODIGO ||
-    props.codigo ||
-    'Sin dato';
-
-  return `
-    <b>Zona geoeconómica ${tipoZona}</b><br>
-    Código: ${codigo}<br>
-    Código zona: ${codigoZona}<br>
-    Valor hectárea: ${valorHectarea}<br>
-    Subzona física: ${subzonaFisica}<br>
-    Código municipio: ${codigoMunicipio}
-  `;
-}
-
-function cargarZonaGeoecoUrbana() {
-  fetch('data/geojson/u_zona_homogenea_geoeconomica.geojson')
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar u_zona_homogenea_geoeconomica.geojson: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((data) => {
-      if (zonaGeoecoUrbanaLayer) {
-        map.removeLayer(zonaGeoecoUrbanaLayer);
-      }
-
-      zonaGeoecoUrbanaLayer = L.geoJSON(data, {
-        style: {
-          color: '#22c55e',
-          weight: 1.5,
-          fillOpacity: 0.15
-        },
-        onEachFeature: function (feature, layer) {
-          const props = feature.properties || {};
-          layer.bindPopup(construirPopupZonaGeoeco(props, 'urbana'));
-        }
-      });
-    })
-    .catch((error) => {
-      console.error('Error cargando u_zona_homogenea_geoeconomica.geojson:', error);
-      alert('No fue posible cargar la capa de zonas geoeconómicas urbanas.');
-    });
-}
-
-function cargarZonaGeoecoRural() {
-  fetch('data/geojson/r_zona_homogenea_geoeconomica.geojson')
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar r_zona_homogenea_geoeconomica.geojson: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((data) => {
-      if (zonaGeoecoRuralLayer) {
-        map.removeLayer(zonaGeoecoRuralLayer);
-      }
-
-      zonaGeoecoRuralLayer = L.geoJSON(data, {
-        style: {
-          color: '#8b5cf6',
-          weight: 1.5,
-          fillOpacity: 0.12,
-          dashArray: '6, 4'
-        },
-        onEachFeature: function (feature, layer) {
-          const props = feature.properties || {};
-          layer.bindPopup(construirPopupZonaGeoeco(props, 'rural'));
-        }
-      });
-    })
-    .catch((error) => {
-      console.error('Error cargando r_zona_homogenea_geoeconomica.geojson:', error);
-      alert('No fue posible cargar la capa de zonas geoeconómicas rurales.');
-    });
-}
-
-document.getElementById('toggleOferta').addEventListener('change', (e) => {
-  if (e.target.checked) {
-    map.addLayer(ofertaLayer);
-  } else {
-    map.removeLayer(ofertaLayer);
-  }
-});
-
-document.getElementById('togglePlanesParciales').addEventListener('change', (e) => {
-  if (e.target.checked) {
-    if (planesParcialesLayer) {
-      map.addLayer(planesParcialesLayer);
-      const bounds = planesParcialesLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds);
-      }
-    } else {
-      cargarPlanesParciales();
-      setTimeout(() => {
-        if (planesParcialesLayer) {
-          map.addLayer(planesParcialesLayer);
-          const bounds = planesParcialesLayer.getBounds();
-          if (bounds.isValid()) {
-            map.fitBounds(bounds);
-          }
-        }
-      }, 800);
-    }
-  } else {
-    if (planesParcialesLayer) {
-      map.removeLayer(planesParcialesLayer);
-    }
-  }
-});
-
-document.getElementById('toggleZonaGeoecoUrbana').addEventListener('change', (e) => {
-  if (e.target.checked) {
-    if (zonaGeoecoUrbanaLayer) {
-      map.addLayer(zonaGeoecoUrbanaLayer);
-      const bounds = zonaGeoecoUrbanaLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds);
-      }
-    } else {
-      cargarZonaGeoecoUrbana();
-      setTimeout(() => {
-        if (zonaGeoecoUrbanaLayer) {
-          map.addLayer(zonaGeoecoUrbanaLayer);
-          const bounds = zonaGeoecoUrbanaLayer.getBounds();
-          if (bounds.isValid()) {
-            map.fitBounds(bounds);
-          }
-        }
-      }, 800);
-    }
-  } else {
-    if (zonaGeoecoUrbanaLayer) {
-      map.removeLayer(zonaGeoecoUrbanaLayer);
-    }
-  }
-});
-
-document.getElementById('toggleZonaGeoecoRural').addEventListener('change', (e) => {
-  if (e.target.checked) {
-    if (zonaGeoecoRuralLayer) {
-      map.addLayer(zonaGeoecoRuralLayer);
-      const bounds = zonaGeoecoRuralLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds);
-      }
-    } else {
-      cargarZonaGeoecoRural();
-      setTimeout(() => {
-        if (zonaGeoecoRuralLayer) {
-          map.addLayer(zonaGeoecoRuralLayer);
-          const bounds = zonaGeoecoRuralLayer.getBounds();
-          if (bounds.isValid()) {
-            map.fitBounds(bounds);
-          }
-        }
-      }, 800);
-    }
-  } else {
-    if (zonaGeoecoRuralLayer) {
-      map.removeLayer(zonaGeoecoRuralLayer);
-    }
-  }
-});
-
-document.getElementById('cargarGeojsonBtn').addEventListener('click', () => {
-  const fileInput = document.getElementById('geojsonFile');
-  const file = fileInput.files[0];
-
-  if (!file) {
-    alert('Selecciona un archivo GeoJSON.');
-    return;
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = function (event) {
-    try {
-      const geojson = JSON.parse(event.target.result);
-
-      const uploadedLayer = L.geoJSON(geojson, {
-        style: {
-          color: '#f97316',
-          weight: 2,
-          fillOpacity: 0.2
-        },
-        onEachFeature: function (feature, layer) {
-          const props = feature.properties || {};
-          let content = '<b>Capa cargada</b><br>';
-
-          Object.keys(props).forEach((key) => {
-            content += `${key}: ${props[key]}<br>`;
-          });
-
-          layer.bindPopup(content);
-        }
-      }).addTo(map);
-
-      const bounds = uploadedLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds);
-      }
-
-      uploadedLayersList.innerHTML += `<div class="legend-item"><span class="legend-color orange"></span>${file.name}</div>`;
-    } catch (error) {
-      alert('El archivo no es un GeoJSON válido.');
-      console.error(error);
-    }
-  };
-
-  reader.readAsText(file);
-});
 proj4.defs(
   "EPSG:9377",
   "+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs"
@@ -655,7 +349,6 @@ document.getElementById('consultarBtn').addEventListener('click', () => {
 
     if (soloDigitos.length === 30) {
       const encontrado = buscarPorPredial30(soloDigitos);
-
       if (!encontrado) {
         alert('No se encontró el predio. Para búsqueda exacta por 30 dígitos necesitas una capa que contenga ese atributo predial.');
       }
@@ -664,7 +357,6 @@ document.getElementById('consultarBtn').addEventListener('click', () => {
 
     if (soloDigitos.length === 5) {
       const encontrado = buscarPorMunicipio(soloDigitos);
-
       if (!encontrado) {
         alert(`No se encontraron entidades para el código DIVIPOLA municipal ${soloDigitos}.`);
       }
@@ -673,7 +365,6 @@ document.getElementById('consultarBtn').addEventListener('click', () => {
 
     if (soloDigitos.length === 2) {
       const encontrado = buscarPorDepartamento(soloDigitos);
-
       if (!encontrado) {
         alert(`No se encontraron entidades para el código de departamento ${soloDigitos}.`);
       }
@@ -697,6 +388,267 @@ document.getElementById('limpiarBtn').addEventListener('click', () => {
   document.getElementById('predialInput').value = '';
   document.getElementById('norteInput').value = '';
   document.getElementById('esteInput').value = '';
-
   limpiarConsultaGrafica();
 });
+
+async function cargarOfertasDesdeFirestore() {
+  try {
+    ofertaLayer.clearLayers();
+
+    const q = query(collection(db, 'properties'), where('status', '==', 'activa'));
+    const querySnapshot = await getDocs(q);
+
+    querySnapshot.forEach((doc) => {
+      const inmueble = doc.data();
+
+      const lat = Number(inmueble.latitude);
+      const lng = Number(inmueble.longitude);
+
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const popup = `
+        <b>${inmueble.title || 'Sin título'}</b><br>
+        Tipo: ${inmueble.property_type || 'Sin dato'}<br>
+        Municipio: ${inmueble.municipality || 'Sin dato'}<br>
+        Código municipio: ${inmueble.municipality_code || 'Sin dato'}<br>
+        Sector: ${inmueble.sector || 'Sin dato'}<br>
+        Precio: $${Number(inmueble.price || 0).toLocaleString()}<br>
+        Área: ${inmueble.area || 'Sin dato'} m²<br>
+        Teléfono: ${inmueble.contact_phone || 'Sin dato'}<br>
+        Descripción: ${inmueble.description || 'Sin descripción'}
+      `;
+
+      L.marker([lat, lng]).bindPopup(popup).addTo(ofertaLayer);
+    });
+  } catch (error) {
+    console.error('Error cargando properties desde Firestore:', error);
+    alert('No fue posible cargar las ofertas desde Firebase.');
+  }
+}
+
+function cargarPlanesParciales() {
+  fetch('data/geojson/planes_parciales.geojson.geojson')
+    .then((response) => {
+      if (!response.ok) throw new Error(`No se pudo cargar planes_parciales.geojson.geojson: ${response.status}`);
+      return response.json();
+    })
+    .then((data) => {
+      if (planesParcialesLayer) map.removeLayer(planesParcialesLayer);
+
+      planesParcialesLayer = L.geoJSON(data, {
+        style: {
+          color: '#f97316',
+          weight: 2,
+          fillOpacity: 0.2
+        },
+        onEachFeature: function (feature, layer) {
+          const props = feature.properties || {};
+          const nombre = props.NOMBRE_PP || 'Plan parcial sin nombre';
+          let content = `<b>Plan parcial</b><br>Nombre: ${nombre}<br>`;
+          Object.keys(props).forEach((key) => {
+            if (key !== 'NOMBRE_PP') content += `${key}: ${props[key]}<br>`;
+          });
+          layer.bindPopup(content);
+        }
+      });
+    })
+    .catch((error) => {
+      console.error('Error cargando planes_parciales.geojson.geojson:', error);
+      alert('No fue posible cargar la capa de planes parciales.');
+    });
+}
+
+function construirPopupZonaGeoeco(props, tipoZona) {
+  const codigoZona =
+    props.CODIGO_ZONA_GEOECONOMICA ||
+    props.codigo_zona_geoeconomica ||
+    props.CODIGO_ZONA ||
+    props.codigo_zona ||
+    'Sin dato';
+
+  const valorHectarea = props.VALOR_HECTAREA || props.valor_hectarea || 'Sin dato';
+  const subzonaFisica = props.SUBZONA_FISICA || props.subzona_fisica || 'Sin dato';
+  const codigoMunicipio = props.CODIGO_MUNICIPIO || props.codigo_municipio || 'Sin dato';
+  const codigo = props.CODIGO || props.codigo || 'Sin dato';
+
+  return `
+    <b>Zona geoeconómica ${tipoZona}</b><br>
+    Código: ${codigo}<br>
+    Código zona: ${codigoZona}<br>
+    Valor hectárea: ${valorHectarea}<br>
+    Subzona física: ${subzonaFisica}<br>
+    Código municipio: ${codigoMunicipio}
+  `;
+}
+
+function cargarZonaGeoecoUrbana() {
+  fetch('data/geojson/u_zona_homogenea_geoeconomica.geojson')
+    .then((response) => {
+      if (!response.ok) throw new Error(`No se pudo cargar u_zona_homogenea_geoeconomica.geojson: ${response.status}`);
+      return response.json();
+    })
+    .then((data) => {
+      if (zonaGeoecoUrbanaLayer) map.removeLayer(zonaGeoecoUrbanaLayer);
+
+      zonaGeoecoUrbanaLayer = L.geoJSON(data, {
+        style: {
+          color: '#22c55e',
+          weight: 1.5,
+          fillOpacity: 0.15
+        },
+        onEachFeature: function (feature, layer) {
+          const props = feature.properties || {};
+          layer.bindPopup(construirPopupZonaGeoeco(props, 'urbana'));
+        }
+      });
+    })
+    .catch((error) => {
+      console.error('Error cargando u_zona_homogenea_geoeconomica.geojson:', error);
+      alert('No fue posible cargar la capa de zonas geoeconómicas urbanas.');
+    });
+}
+
+function cargarZonaGeoecoRural() {
+  fetch('data/geojson/r_zona_homogenea_geoeconomica.geojson')
+    .then((response) => {
+      if (!response.ok) throw new Error(`No se pudo cargar r_zona_homogenea_geoeconomica.geojson: ${response.status}`);
+      return response.json();
+    })
+    .then((data) => {
+      if (zonaGeoecoRuralLayer) map.removeLayer(zonaGeoecoRuralLayer);
+
+      zonaGeoecoRuralLayer = L.geoJSON(data, {
+        style: {
+          color: '#8b5cf6',
+          weight: 1.5,
+          fillOpacity: 0.12,
+          dashArray: '6, 4'
+        },
+        onEachFeature: function (feature, layer) {
+          const props = feature.properties || {};
+          layer.bindPopup(construirPopupZonaGeoeco(props, 'rural'));
+        }
+      });
+    })
+    .catch((error) => {
+      console.error('Error cargando r_zona_homogenea_geoeconomica.geojson:', error);
+      alert('No fue posible cargar la capa de zonas geoeconómicas rurales.');
+    });
+}
+
+document.getElementById('toggleOferta').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    map.addLayer(ofertaLayer);
+  } else {
+    map.removeLayer(ofertaLayer);
+  }
+});
+
+document.getElementById('togglePlanesParciales').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (planesParcialesLayer) {
+      map.addLayer(planesParcialesLayer);
+      const bounds = planesParcialesLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds);
+    } else {
+      cargarPlanesParciales();
+      setTimeout(() => {
+        if (planesParcialesLayer) {
+          map.addLayer(planesParcialesLayer);
+          const bounds = planesParcialesLayer.getBounds();
+          if (bounds.isValid()) map.fitBounds(bounds);
+        }
+      }, 800);
+    }
+  } else {
+    if (planesParcialesLayer) map.removeLayer(planesParcialesLayer);
+  }
+});
+
+document.getElementById('toggleZonaGeoecoUrbana').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (zonaGeoecoUrbanaLayer) {
+      map.addLayer(zonaGeoecoUrbanaLayer);
+      const bounds = zonaGeoecoUrbanaLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds);
+    } else {
+      cargarZonaGeoecoUrbana();
+      setTimeout(() => {
+        if (zonaGeoecoUrbanaLayer) {
+          map.addLayer(zonaGeoecoUrbanaLayer);
+          const bounds = zonaGeoecoUrbanaLayer.getBounds();
+          if (bounds.isValid()) map.fitBounds(bounds);
+        }
+      }, 800);
+    }
+  } else {
+    if (zonaGeoecoUrbanaLayer) map.removeLayer(zonaGeoecoUrbanaLayer);
+  }
+});
+
+document.getElementById('toggleZonaGeoecoRural').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (zonaGeoecoRuralLayer) {
+      map.addLayer(zonaGeoecoRuralLayer);
+      const bounds = zonaGeoecoRuralLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds);
+    } else {
+      cargarZonaGeoecoRural();
+      setTimeout(() => {
+        if (zonaGeoecoRuralLayer) {
+          map.addLayer(zonaGeoecoRuralLayer);
+          const bounds = zonaGeoecoRuralLayer.getBounds();
+          if (bounds.isValid()) map.fitBounds(bounds);
+        }
+      }, 800);
+    }
+  } else {
+    if (zonaGeoecoRuralLayer) map.removeLayer(zonaGeoecoRuralLayer);
+  }
+});
+
+document.getElementById('cargarGeojsonBtn').addEventListener('click', () => {
+  const fileInput = document.getElementById('geojsonFile');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    alert('Selecciona un archivo GeoJSON.');
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = function (event) {
+    try {
+      const geojson = JSON.parse(event.target.result);
+
+      const uploadedLayer = L.geoJSON(geojson, {
+        style: {
+          color: '#f97316',
+          weight: 2,
+          fillOpacity: 0.2
+        },
+        onEachFeature: function (feature, layer) {
+          const props = feature.properties || {};
+          let content = '<b>Capa cargada</b><br>';
+          Object.keys(props).forEach((key) => {
+            content += `${key}: ${props[key]}<br>`;
+          });
+          layer.bindPopup(content);
+        }
+      }).addTo(map);
+
+      const bounds = uploadedLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds);
+
+      uploadedLayersList.innerHTML += `<div class="legend-item"><span class="legend-color orange"></span>${file.name}</div>`;
+    } catch (error) {
+      alert('El archivo no es un GeoJSON válido.');
+      console.error(error);
+    }
+  };
+
+  reader.readAsText(file);
+});
+
+cargarOfertasDesdeFirestore();
