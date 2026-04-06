@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "title": "Vivienda en Villavicencio",
+    "property_type": "Propiedad horizontal",
+    "municipality": "Villavicencio",
+    "sector": "Buque",
+    "price": 500000000,
+    "area": 130,
+    "description": "Apartamento en perfectas condiciones, casi nuevo",
+    "contact_phone": "3193319181",
+    "latitude": 4.142,
+    "longitude": -73.626
+  },
+  {
+    "id": 2,
+    "title": "Casa sector centro",
+    "property_type": "Casa",
+    "municipality": "Villavicencio",
+    "sector": "Centro",
+    "price": 420000000,
+    "area": 110,
+    "description": "Casa amplia con buena ubicación",
+    "contact_phone": "3000000000",
+    "latitude": 4.149,
+    "longitude": -73.637
+  }
+]
